@@ -22,7 +22,9 @@ Anti-fabrication is enforced at THREE layers, not just a prompt instruction:
 
 import os
 import re
+import sqlite3
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, List, Optional
 from uuid import uuid4
@@ -34,6 +36,13 @@ from .router import DocumentRouter, PipelineType
 from .vector_store import VectorStore
 from .xlsx_engine import XLSXIntelligenceEngine, XLSXStatus, XLSXResponse
 from .ocr_agent import OCRAgent, OCRResponse, OCRDocumentMetadata
+
+try:
+    from access_control import visible_file_ids_for
+    from db import get_db, log_audit
+except ImportError:
+    from .access_control import visible_file_ids_for  # type: ignore
+    from ..db import get_db, log_audit  # type: ignore
 
 CONFLICT_RESOLVER_API_KEY = (
     os.environ.get("CONFLICT_RESOLVER_API_KEY")
@@ -110,12 +119,19 @@ class DocumentIntelligenceAgent:
         self.sessions: dict[str, List[ConversationTurn]] = {}
 
     # ---------------------------------------------------------- ingestion
-    def ingest(self, file_path: str) -> dict:
+    def ingest(
+        self,
+        file_path: str,
+        doc_id: Optional[str] = None,
+        owner_id: str = "default_user",
+        db: Optional[sqlite3.Connection] = None,
+        original_filename: Optional[str] = None,
+    ) -> dict:
         decision = self.router.route(file_path)
         if decision.pipeline == PipelineType.UNSUPPORTED:
             return {"status": "rejected", "reason": decision.reason, "file_path": file_path}
 
-        doc_id = str(uuid4())
+        doc_id = doc_id or str(uuid4())
         vision_fn = self._vision_fn if decision.pipeline in (
             PipelineType.SCANNED_PDF, PipelineType.IMAGE, PipelineType.OCR
         ) else None
@@ -131,6 +147,23 @@ class DocumentIntelligenceAgent:
                 "file_path": file_path,
             }
 
+        # Use original display filename for chunk metadata and citations if available
+        conn = db or get_db()
+        display_name = original_filename
+        if not display_name:
+            try:
+                cursor = conn.cursor()
+                cursor.execute("SELECT filename FROM files WHERE id = ?", (doc_id,))
+                row = cursor.fetchone()
+                if row and row["filename"]:
+                    display_name = row["filename"]
+            except Exception:
+                pass
+
+        if display_name:
+            for c in chunks:
+                c.filename = display_name
+
         texts = [c.text for c in chunks]
         embeddings: Any = self.llm.embed(texts)
         self.store.add(chunks, embeddings)
@@ -141,6 +174,7 @@ class DocumentIntelligenceAgent:
             try:
                 wb_meta = self.xlsx_engine.inspect(file_path)
                 xlsx_meta = wb_meta.to_dict()
+                setattr(self.xlsx_engine, "current_workbook_doc_id", doc_id)
             except Exception:
                 pass
 
@@ -149,8 +183,41 @@ class DocumentIntelligenceAgent:
             try:
                 doc_ocr = self.ocr_agent.ingest(file_path)
                 ocr_meta = doc_ocr.to_dict()
+                setattr(self.ocr_agent, "current_document_doc_id", doc_id)
             except Exception:
                 pass
+
+        # Update or record file in SQLite files table
+        conn = db or get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM files WHERE id = ?", (doc_id,))
+        existing = cursor.fetchone()
+        now_iso = datetime.now(timezone.utc).isoformat()
+        if not existing:
+            with conn:
+                conn.execute(
+                    """
+                    INSERT INTO files (
+                        id, owner_id, filename, storage_path, pipeline,
+                        visibility, status, chunk_count, uploaded_at, deleted_at
+                    ) VALUES (?, ?, ?, ?, ?, 'private', 'active', ?, ?, NULL)
+                    """,
+                    (
+                        doc_id,
+                        owner_id,
+                        Path(file_path).name,
+                        os.path.abspath(file_path),
+                        decision.pipeline.value,
+                        len(chunks),
+                        now_iso,
+                    ),
+                )
+        else:
+            with conn:
+                conn.execute(
+                    "UPDATE files SET chunk_count = ?, pipeline = ? WHERE id = ?",
+                    (len(chunks), decision.pipeline.value, doc_id),
+                )
 
         result_payload: dict[str, Any] = {
             "status": "ok",
@@ -183,13 +250,46 @@ class DocumentIntelligenceAgent:
         return True
 
     # ------------------------------------------------------------- query
-    def query(self, question: str, session_id: str = "default") -> AgentResponse:
+    def query(
+        self,
+        question: str,
+        session_id: str = "default",
+        user_id: Optional[str] = None,
+        db: Optional[sqlite3.Connection] = None,
+    ) -> AgentResponse:
+        conn = db or get_db()
+        effective_user_id = user_id or "default_user"
+        allowed_file_ids = visible_file_ids_for(effective_user_id, conn)
+
+        # Audit log the query
+        log_audit(
+            actor_id=effective_user_id,
+            action="query",
+            detail=question[:500],
+            db=conn,
+        )
+
         history = self.sessions.setdefault(session_id, [])
+
+        # If user has no visible files in scope, refuse immediately with insufficient evidence
+        if not allowed_file_ids:
+            response = AgentResponse(
+                answer=INSUFFICIENT_EVIDENCE_MSG,
+                citations=[],
+                grounded=True,
+                insufficient_evidence=True,
+                conflicting=False,
+                retrieved_chunks=[],
+                status="insufficient_information",
+            )
+            history.append(ConversationTurn(question, response.answer))
+            return response
 
         standalone_question = self._condense_question(question, history)
 
-        # 1. Primary Tabular Route: If a workbook is active, consult XLSX Intelligence Engine
-        if self.xlsx_engine.current_workbook is not None:
+        # 1. Primary Tabular Route: If a workbook is active and permitted for this user
+        wb_doc_id = getattr(self.xlsx_engine, "current_workbook_doc_id", None)
+        if self.xlsx_engine.current_workbook is not None and (wb_doc_id is None or wb_doc_id in allowed_file_ids):
             xlsx_resp = self.xlsx_engine.query(standalone_question, session_id=session_id)
             if xlsx_resp.status in (
                 XLSXStatus.VERIFIED,
@@ -202,7 +302,7 @@ class DocumentIntelligenceAgent:
                         "filename": ev.get("file", self.xlsx_engine.current_workbook.filename),
                         "page": ev.get("sheet", "Data"),
                         "chunk_type": "table_cell" if "cell" in ev else "table_aggregate",
-                        "snippet": f"Operation: {ev.get('operation', 'analysis')}, Result: {ev.get('result')}",
+                        "snippet": f"Sheet: {ev.get('sheet')}, Operation: {ev.get('operation')}, Columns: {ev.get('columns')}, Rows: {ev.get('rows_analyzed')}",
                     })
                 response = AgentResponse(
                     answer=xlsx_resp.answer,
@@ -252,7 +352,7 @@ class DocumentIntelligenceAgent:
 
         # 2. Vector Retrieval Route for unstructured prose documents
         q_embedding: Any = self.llm.embed(standalone_question)
-        retrieved = self.store.query(q_embedding, k=RETRIEVAL_TOP_K)
+        retrieved = self.store.query(q_embedding, k=RETRIEVAL_TOP_K, allowed_file_ids=allowed_file_ids)
 
         relevant = [r for r in retrieved if r["distance"] is None or r["distance"] <= MAX_RELEVANT_DISTANCE]
 
@@ -356,12 +456,17 @@ class DocumentIntelligenceAgent:
         question: str,
         answer_context: Optional[str] = None,
         api_key: Optional[str] = None,
+        user_id: Optional[str] = None,
+        db: Optional[sqlite3.Connection] = None,
     ) -> dict:
         """
         Uses an LLM Search / Resolution call with a dedicated API key
         to analyze conflicting evidence and determine the optimal answer.
         """
         key = api_key or os.environ.get("CONFLICT_RESOLVER_API_KEY", CONFLICT_RESOLVER_API_KEY)
+        conn = db or get_db()
+        effective_user_id = user_id or "default_user"
+        allowed_file_ids = visible_file_ids_for(effective_user_id, conn)
 
         # Gather relevant context from active workbook, recent conversation, or vector store
         context_parts = []
@@ -369,16 +474,21 @@ class DocumentIntelligenceAgent:
             context_parts.append(f"Previous Agent Answer & Discovered Discrepancy:\n{answer_context}")
 
         # Check if active workbook has conflicting information
-        if self.xlsx_engine.current_workbook and self.xlsx_engine.current_workbook.sheet_count >= 2:
+        wb_doc_id = getattr(self.xlsx_engine, "current_workbook_doc_id", None)
+        if (
+            self.xlsx_engine.current_workbook
+            and (wb_doc_id is None or wb_doc_id in allowed_file_ids)
+            and self.xlsx_engine.current_workbook.sheet_count >= 2
+        ):
             wb = self.xlsx_engine.current_workbook
             conflict_res = self.xlsx_engine._check_conflicting_information(question, question.lower(), wb)
             if conflict_res:
                 context_parts.append(f"Spreadsheet Discrepancy Detected:\n{conflict_res.answer}")
 
-        # Also retrieve top matching chunks from vector store
+        # Also retrieve top matching chunks from vector store using access control filter
         try:
             q_emb: Any = self.llm.embed(question)
-            retrieved = self.store.query(q_emb, k=6)
+            retrieved = self.store.query(q_emb, k=6, allowed_file_ids=allowed_file_ids)
             if retrieved:
                 doc_ctx, _ = self._build_context(retrieved)
                 context_parts.append(f"Document Sources & Citations:\n{doc_ctx}")

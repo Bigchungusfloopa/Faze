@@ -12,3 +12,5 @@ chroma_data/
 doc_agent/uploads/
 frontend/dist/
 *.log
+*.db
+files.db

@@ -43,11 +43,29 @@ class VectorStore:
             } for c in chunks],
         )
 
-    def query(self, query_embedding: Any, k: int = 6) -> List[dict]:
-        if self.collection.count() == 0:
+    def query(self, query_embedding: Any, k: int = 6, allowed_file_ids: Optional[List[str]] = None) -> List[dict]:
+        """
+        If allowed_file_ids is provided, add a Chroma `where` filter:
+            where={"doc_id": {"$in": allowed_file_ids}}
+        so retrieval NEVER returns chunks belonging to files the caller isn't
+        permitted to see. If allowed_file_ids is None, do NOT default to
+        "return everything" -- treat None as "caller forgot to pass
+        permissions" and raise, forcing every call site to be explicit.
+        """
+        if allowed_file_ids is None:
+            raise ValueError(
+                "allowed_file_ids must be explicitly provided -- caller forgot to pass permissions"
+            )
+        if len(allowed_file_ids) == 0 or self.collection.count() == 0:
             return []
+
         k = min(k, self.collection.count())
-        res = self.collection.query(query_embeddings=[query_embedding], n_results=k)
+        where_filter = {"doc_id": {"$in": allowed_file_ids}}
+        res = self.collection.query(
+            query_embeddings=[query_embedding],
+            n_results=k,
+            where=where_filter,
+        )
         results = []
         for i in range(len(res["ids"][0])):
             results.append({
@@ -57,6 +75,14 @@ class VectorStore:
                 "distance": res["distances"][0][i] if res.get("distances") else None,
             })
         return results
+
+    def delete_by_doc_id(self, doc_id: str):
+        if self.collection.count() == 0:
+            return
+        try:
+            self.collection.delete(where={"doc_id": doc_id})
+        except Exception:
+            pass
 
     def delete_by_filename(self, filename: str):
         if self.collection.count() == 0:
