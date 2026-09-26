@@ -439,9 +439,9 @@ body.landing-active {
 /* Stats */
 .stats-footer {
   flex-shrink: 0;
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 20px;
+  display: flex;
+  justify-content: center;
+  gap: 60px;
   max-width: 920px;
   width: 100%;
   padding-bottom: 8px;
@@ -1038,7 +1038,7 @@ body.landing-active {
     background: #fff; border-radius: 50%;
     display: grid; place-items: center; color: #000;
   }
-  .stats-footer { grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  .stats-footer { gap: 32px; flex-direction: column; }
   .headline span { letter-spacing: -0.08em; line-height: 1.05; }
 
   /* Chat */

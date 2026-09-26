@@ -1,7 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { FileText } from 'lucide-react';
+import LogoLoop from '../LogoLoop';
 import './landing.css';
+
+const FILE_TYPES = [
+  { node: <span style={{ fontWeight: 700, fontSize: '18px', letterSpacing: '1px', color: '#fff' }}>PDF</span> },
+  { node: <span style={{ fontWeight: 700, fontSize: '18px', letterSpacing: '1px', color: '#fff' }}>DOCX</span> },
+  { node: <span style={{ fontWeight: 700, fontSize: '18px', letterSpacing: '1px', color: '#fff' }}>CSV</span> },
+  { node: <span style={{ fontWeight: 700, fontSize: '18px', letterSpacing: '1px', color: '#fff' }}>XLSX</span> },
+  { node: <span style={{ fontWeight: 700, fontSize: '18px', letterSpacing: '1px', color: '#fff' }}>PPTX</span> },
+  { node: <span style={{ fontWeight: 700, fontSize: '18px', letterSpacing: '1px', color: '#fff' }}>TXT</span> },
+  { node: <span style={{ fontWeight: 700, fontSize: '18px', letterSpacing: '1px', color: '#fff' }}>MD</span> },
+  { node: <span style={{ fontWeight: 700, fontSize: '18px', letterSpacing: '1px', color: '#fff' }}>JSON</span> },
+];
 
 export default function LandingPage() {
   const navigate = useNavigate();
@@ -86,6 +98,7 @@ export default function LandingPage() {
         </a>
         <nav className="nav-pill">
           <Link to="/" className="nav-link active">Home</Link>
+          <Link to="/workspace" className="nav-link">Workspace</Link>
           <Link to="/chat" className="nav-link">Chat</Link>
         </nav>
         <button onClick={() => navigate('/login')} className="btn-signin" style={{ border: 'none', cursor: 'pointer' }}>
@@ -109,6 +122,7 @@ export default function LandingPage() {
       <div className="mobile-overlay" onClick={toggleMenu}></div>
       <div className="mobile-sheet">
         <Link to="/" className="mobile-link active" onClick={toggleMenu}>Home</Link>
+        <Link to="/workspace" className="mobile-link" onClick={toggleMenu}>Workspace</Link>
         <Link to="/chat" className="mobile-link" onClick={toggleMenu}>Chat</Link>
         <button onClick={() => { toggleMenu(); navigate('/login'); }} className="mobile-signin" style={{ border: 'none', cursor: 'pointer' }}>
           Sign in
@@ -134,7 +148,7 @@ export default function LandingPage() {
         </h1>
 
         <p className="subhead anim" style={{ '--d': '0.28s' } as React.CSSProperties}>
-          Automated classification and NLP extraction powered by Gemini 1.5 Pro. Extract insights from your documents in seconds.
+          Automated classification and NLP extraction. Extract insights from your documents in seconds.
         </p>
 
         <button 
@@ -158,6 +172,34 @@ export default function LandingPage() {
           <div className="stat-label">Document Formats</div>
         </div>
       </footer>
+
+      <div 
+        className="anim" 
+        style={{ 
+          '--d': '0.75s', 
+          marginTop: 'auto', 
+          marginBottom: '40px', 
+          width: '90%', 
+          maxWidth: '600px',
+          background: 'rgba(255,255,255,0.03)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          backdropFilter: 'blur(16px) saturate(180%)',
+          borderRadius: '999px',
+          padding: '16px 32px',
+          overflow: 'hidden',
+          display: 'flex',
+          justifyContent: 'center',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.2)'
+        } as React.CSSProperties}
+      >
+        <LogoLoop 
+          logos={FILE_TYPES} 
+          speed={30} 
+          gap={50} 
+          fadeOut={false} 
+          style={{ maskImage: 'linear-gradient(to right, transparent, black 15%, black 85%, transparent)', WebkitMaskImage: 'linear-gradient(to right, transparent, black 15%, black 85%, transparent)' }}
+        />
+      </div>
     </div>
   );
 }

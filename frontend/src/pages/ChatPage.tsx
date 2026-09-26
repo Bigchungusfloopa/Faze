@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   UploadCloud, MessageSquare, ArrowLeft, Send,
-  FileText, X, Paperclip, Plus, User,
+  FileText, X, Paperclip, Plus, User, PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 
 const VIDEO_URL =
   'https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260809_012548_ef22562c-c0ae-4816-ad9d-f8922af4e6a7.mp4';
@@ -50,6 +50,7 @@ const getGeminiResponse = async (
 };
 
 type Message = { role: 'user' | 'assistant'; content: string };
+type ChatSession = { id: string; title: string; messages: Message[] };
 
 /* ── Glass style helpers ── */
 const frost = (alpha = 0.08, blur = 24) => ({
@@ -59,21 +60,33 @@ const frost = (alpha = 0.08, blur = 24) => ({
   WebkitBackdropFilter: `blur(${blur}px) saturate(180%)`,
 } as React.CSSProperties);
 
+const WELCOME_MSG: Message = {
+  role: 'assistant',
+  content: 'Hello! I am Birbal. Upload a document — PDF, image, Excel, or text — and ask me anything about its contents.',
+};
+
 export default function ChatPage() {
   const [isDragging, setIsDragging] = useState(false);
-  const [chatHistory, setChatHistory] = useState<string[]>([]);
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      role: 'assistant',
-      content:
-        'Hello! I am Birbal, powered by Gemini 1.5 Pro. Upload a document — PDF, image, Excel, or text — and ask me anything about its contents.',
-    },
-  ]);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<Message[]>([WELCOME_MSG]);
   const [input, setInput] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const [isThinking, setIsThinking] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const location = useLocation();
+  const isWorkspace = new URLSearchParams(location.search).get('workspace') === 'true';
+
+  useEffect(() => {
+    if (isWorkspace && messages.length === 1) {
+      setMessages([{
+        role: 'assistant',
+        content: 'I have loaded your Community Workspace files. How can I help you analyze them today?'
+      }]);
+    }
+  }, [isWorkspace]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -114,9 +127,17 @@ export default function ChatPage() {
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
     setIsThinking(true);
 
-    if (messages.length === 1) {
-      const title = text ? text.slice(0, 30) : names.length > 0 ? names[0] : 'New Chat';
-      setChatHistory(prev => [title, ...prev]);
+    // Create/update session in history
+    const updatedMessages: Message[] = [...next];
+    if (activeSessionId) {
+      setChatSessions(prev => prev.map(s =>
+        s.id === activeSessionId ? { ...s, messages: updatedMessages } : s
+      ));
+    } else {
+      const title = text ? text.slice(0, 32) : names.length > 0 ? names[0] : 'New Chat';
+      const newId = Date.now().toString();
+      setActiveSessionId(newId);
+      setChatSessions(prev => [{ id: newId, title, messages: updatedMessages }, ...prev]);
     }
 
     const reply = await getGeminiResponse(messages, userContent);
@@ -129,7 +150,14 @@ export default function ChatPage() {
   };
 
   const startNewChat = () => {
-    setMessages([{ role: 'assistant', content: 'New chat started! Upload a document or ask me anything.' }]);
+    setActiveSessionId(null);
+    setMessages([WELCOME_MSG]);
+    setFiles([]); setInput('');
+  };
+
+  const loadSession = (session: ChatSession) => {
+    setActiveSessionId(session.id);
+    setMessages(session.messages);
     setFiles([]); setInput('');
   };
 
@@ -175,15 +203,18 @@ export default function ChatPage() {
       {/* ── Sidebar ── */}
       <aside style={{
         ...frost(0.07, 24),
-        width: 234,
+        width: isSidebarOpen ? 234 : 0,
         flexShrink: 0,
         display: 'flex',
         flexDirection: 'column',
-        margin: '12px 0 12px 12px',
+        margin: isSidebarOpen ? '12px 0 12px 12px' : '12px 0',
         borderRadius: 22,
-        boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
+        boxShadow: isSidebarOpen ? '0 8px 32px rgba(0,0,0,0.35)' : 'none',
         position: 'relative',
         zIndex: 1,
+        overflow: 'hidden',
+        transition: 'width 0.28s cubic-bezier(0.4,0,0.2,1), margin 0.28s cubic-bezier(0.4,0,0.2,1), box-shadow 0.28s ease',
+        opacity: isSidebarOpen ? 1 : 0,
       }}
         className="hidden-mobile"
       >
@@ -232,23 +263,28 @@ export default function ChatPage() {
           Recent
         </p>
         <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px' }}>
-          {chatHistory.length === 0 && (
+          {chatSessions.length === 0 && (
             <p style={{ padding: '10px 8px', fontSize: 12, color: 'var(--muted)', textAlign: 'center', opacity: 0.7 }}>
               No recent chats
             </p>
           )}
-          {chatHistory.map((name, idx) => (
-            <button key={idx} style={{
-              display: 'flex', alignItems: 'center', gap: 8, width: '100%',
-              padding: '8px 10px', borderRadius: 10, background: 'transparent',
-              border: 'none', color: 'var(--muted)', fontSize: 13, cursor: 'pointer',
-              textAlign: 'left', overflow: 'hidden', transition: 'background 0.15s, color 0.15s',
-            }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; e.currentTarget.style.color = '#fff'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--muted)'; }}
+          {chatSessions.map((session) => (
+            <button key={session.id}
+              onClick={() => loadSession(session)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+                padding: '8px 10px', borderRadius: 10,
+                background: activeSessionId === session.id ? 'rgba(255,255,255,0.10)' : 'transparent',
+                border: activeSessionId === session.id ? '1px solid rgba(255,255,255,0.12)' : '1px solid transparent',
+                color: activeSessionId === session.id ? '#fff' : 'var(--muted)',
+                fontSize: 13, cursor: 'pointer',
+                textAlign: 'left', overflow: 'hidden', transition: 'background 0.15s, color 0.15s',
+              }}
+              onMouseEnter={e => { if (activeSessionId !== session.id) { e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; e.currentTarget.style.color = '#fff'; } }}
+              onMouseLeave={e => { if (activeSessionId !== session.id) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--muted)'; } }}
             >
               <MessageSquare size={12} style={{ opacity: 0.5, flexShrink: 0 }} />
-              <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
+              <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{session.title}</span>
             </button>
           ))}
         </div>
@@ -272,6 +308,20 @@ export default function ChatPage() {
           background: 'rgba(0,0,0,0.2)',
           backdropFilter: 'blur(16px)',
         }}>
+          {/* Sidebar toggle */}
+          <button
+            onClick={() => setIsSidebarOpen(o => !o)}
+            title={isSidebarOpen ? 'Close sidebar' : 'Open sidebar'}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: 'rgba(255,255,255,0.55)', display: 'flex', alignItems: 'center',
+              padding: 6, borderRadius: 8, transition: 'color 0.2s, background 0.2s', flexShrink: 0,
+            }}
+            onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
+            onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.55)'; e.currentTarget.style.background = 'none'; }}
+          >
+            {isSidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
+          </button>
           <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#fff', display: 'grid', placeItems: 'center', color: '#000' }}>
             <FileText size={13} />
           </div>
@@ -279,11 +329,19 @@ export default function ChatPage() {
             Birbal
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginLeft: 'auto', fontSize: 11, color: 'var(--muted)' }}>
+            {isWorkspace && (
+              <span style={{ 
+                background: 'rgba(255,255,255,0.1)', color: '#fff', 
+                padding: '4px 8px', borderRadius: 4, marginRight: 8 
+              }}>
+                Community Workspace
+              </span>
+            )}
             <span style={{
               width: 6, height: 6, borderRadius: '50%', background: '#4ade80',
               animation: 'pulse-status 2s ease-in-out infinite', display: 'inline-block',
             }} />
-            Gemini 1.5 Pro
+            Active
           </div>
         </header>
 
@@ -303,7 +361,7 @@ export default function ChatPage() {
               </div>
               {/* Bubble */}
               <div style={{
-                maxWidth: '68%', padding: '12px 18px', fontSize: 14, lineHeight: 1.65,
+                maxWidth: '68%', padding: '12px 18px', fontSize: 16, lineHeight: 1.7,
                 ...(msg.role === 'assistant'
                   ? {
                     ...frost(0.09, 16),
