@@ -18,8 +18,8 @@ pip install -r requirements.txt
 # Run full test suite (64 tests across all formats)
 PYTHONPATH=. pytest tests/ -v
 
-# Interactive test UI
-python3 test_ui/server.py
+# Interactive CLI demo
+PYTHONPATH=. python3 demo.py
 ```
 
 See [doc_agent/README.md](doc_agent/README.md) for comprehensive documentation on routing, pipelines, and anti-hallucination guardrails.
