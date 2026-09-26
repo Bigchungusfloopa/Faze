@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -29,8 +29,8 @@ const SUFFICIENT = new Set(["answered", "partial", "conflicting_evidence"]);
 export async function GET(_request: Request, { params }: Params) {
   const { id } = await params;
   const supabase = await createClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const user = await getAuthUser(supabase);
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { data: conv } = await supabase
     .from("conversations")
@@ -83,8 +83,8 @@ export async function GET(_request: Request, { params }: Params) {
 export async function DELETE(_request: Request, { params }: Params) {
   const { id } = await params;
   const supabase = await createClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const user = await getAuthUser(supabase);
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { error } = await supabase.from("conversations").delete().eq("id", id).eq("owner_id", user.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

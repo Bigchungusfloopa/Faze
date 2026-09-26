@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { rewriteQuery, type HistoryTurn } from "@/lib/rag/rewrite";
 import { retrieveMulti } from "@/lib/rag/retrieve";
 import { rerank } from "@/lib/rag/rerank";
@@ -52,8 +52,8 @@ async function generateStreamWithRetry(params: GenerateContentParameters, maxAtt
  */
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
+  const user = await getAuthUser(supabase);
+  if (!user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
 
   const body = await request.json().catch(() => null);
   const message = (body?.message as string | undefined)?.trim();

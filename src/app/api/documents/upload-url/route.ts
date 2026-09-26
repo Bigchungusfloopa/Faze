@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { getUploadToken } from "@/lib/storage";
 import { STORAGE_BUCKET } from "@/lib/storage-constants";
 import { resolveFormat } from "@/lib/rag/ingest/formats";
@@ -14,8 +14,8 @@ const MAX_FILE_SIZE = 45 * 1024 * 1024; // 45 MB — under Gemini's native 50MB 
  */
 export async function POST(request: Request) {
   const supabase = await createClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) {
+  const user = await getAuthUser(supabase);
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

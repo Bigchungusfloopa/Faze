@@ -27,3 +27,16 @@ export async function createClient() {
     }
   )
 }
+
+type ServerClient = Awaited<ReturnType<typeof createClient>>
+
+/**
+ * The signed-in user's id, verified locally against the project's ES256
+ * signing key (JWKS cached for 10 min) instead of a ~0.6s round-trip to the
+ * Auth server on every request, which is what getUser() costs.
+ */
+export async function getAuthUser(supabase: ServerClient): Promise<{ id: string } | null> {
+  const { data, error } = await supabase.auth.getClaims()
+  if (error || !data?.claims?.sub) return null
+  return { id: data.claims.sub }
+}

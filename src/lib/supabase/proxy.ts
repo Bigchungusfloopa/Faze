@@ -36,24 +36,26 @@ export async function updateSession(request: NextRequest) {
   )
 
   // IMPORTANT: Avoid writing any logic between createServerClient and
-  // supabase.auth.getUser().
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  // getClaims(). getClaims() still refreshes an expired session (and writes
+  // the new cookies via setAll), but verifies the JWT locally against the
+  // cached signing key instead of a network call to Auth on every request.
+  const { data: claimsData } = await supabase.auth.getClaims()
+  const user = claimsData?.claims?.sub ? { id: claimsData.claims.sub } : null
 
   const pathname = request.nextUrl.pathname
 
   // Every /api/ route used to be public by default here, relying on each
   // individual route handler to call getUser() itself. That is a full data
   // leak the moment one route forgets to -- as api/vault/debug/route.ts did.
-  // Protected by default now; only the OAuth callback needs to be reachable
-  // before a session exists.
+  // Protected by default now; only the auth callback and signup need to be
+  // reachable before a session exists.
   const isPublicRoute =
     pathname === '/' ||
     pathname === '/login' ||
     pathname === '/signup' ||
     pathname === '/reset' ||
-    pathname === '/api/auth/callback'
+    pathname === '/api/auth/callback' ||
+    pathname === '/api/auth/signup'
 
   if (!user && !isPublicRoute) {
     // Unauthenticated users attempting to access the root / or any other 

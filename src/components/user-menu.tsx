@@ -20,12 +20,13 @@ export default function UserMenu() {
 
   useEffect(() => {
     const supabase = createClient()
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) return
-      const meta = user.user_metadata ?? {}
+    supabase.auth.getClaims().then(({ data }) => {
+      const claims = data?.claims
+      if (!claims) return
+      const meta = (claims.user_metadata ?? {}) as Record<string, string | undefined>
       setProfile({
         name: meta.name ?? meta.full_name ?? null,
-        email: user.email ?? null,
+        email: claims.email ?? null,
         avatarUrl: meta.avatar_url ?? null,
       })
     })
