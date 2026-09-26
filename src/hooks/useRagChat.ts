@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from "react"
+import { useQueryClient } from "@tanstack/react-query"
 
 export interface ChatSource {
   marker: number
@@ -38,6 +39,8 @@ export function useRagChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const conversationIdRef = useRef<string | null>(null)
+  const [conversationId, setConversationId] = useState<string | null>(null)
+  const queryClient = useQueryClient()
 
   const send = useCallback(async (text: string, documentIds?: string[], workspaceId?: string | null) => {
     const userMsg: ChatMessage = { id: `u-${Date.now()}`, role: "user", text, sources: [], grounding: null, streaming: false, stage: null }
@@ -64,7 +67,10 @@ export function useRagChat() {
           workspaceId: workspaceId ?? undefined,
         }),
       })
-      if (!res.ok || !res.body) throw new Error(`Chat request failed (${res.status})`)
+      if (!res.ok || !res.body) {
+        const detail = await res.json().catch(() => null)
+        throw new Error(detail?.error || `Chat request failed (${res.status})`)
+      }
 
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
@@ -88,7 +94,10 @@ export function useRagChat() {
           const data = JSON.parse(dataLine.slice("data: ".length))
 
           if (event === "stage") {
-            if (data.conversationId) conversationIdRef.current = data.conversationId
+            if (data.conversationId && data.conversationId !== conversationIdRef.current) {
+              conversationIdRef.current = data.conversationId
+              setConversationId(data.conversationId)
+            }
             patchLast({ stage: data.stage, subQueries: data.subQueries })
           } else if (event === "sources") {
             patchLast({ sources: data.sources })
@@ -110,16 +119,27 @@ export function useRagChat() {
       })
     } finally {
       setIsStreaming(false)
+      queryClient.invalidateQueries({ queryKey: ["conversations"] })
     }
-  }, [])
+  }, [queryClient])
 
   // Conversations aren't scoped to a workspace in this pass -- switching
   // scope mid-session must start a fresh conversation rather than silently
   // mixing personal and workspace history into one thread's context.
   const resetConversation = useCallback(() => {
     conversationIdRef.current = null
+    setConversationId(null)
     setMessages([])
   }, [])
 
-  return { messages, isStreaming, send, resetConversation }
+  const loadConversation = useCallback(async (id: string) => {
+    const res = await fetch(`/api/rag/conversations/${id}`)
+    if (!res.ok) throw new Error("Could not load that conversation.")
+    const { data } = await res.json()
+    conversationIdRef.current = id
+    setConversationId(id)
+    setMessages(data.messages as ChatMessage[])
+  }, [])
+
+  return { messages, isStreaming, send, resetConversation, loadConversation, conversationId }
 }

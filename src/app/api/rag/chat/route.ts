@@ -80,10 +80,23 @@ export async function POST(request: NextRequest) {
   }
 
   let convId = conversationId;
-  if (!convId) {
+  if (convId) {
+    // RLS limits this to the caller's own conversations; the scope check stops
+    // a personal thread from continuing against a workspace corpus (or vice versa).
+    const { data: existing } = await supabase
+      .from("conversations")
+      .select("workspace_id")
+      .eq("id", convId)
+      .maybeSingle();
+    if (!existing) return new Response(JSON.stringify({ error: "Conversation not found" }), { status: 404 });
+    if ((existing.workspace_id ?? null) !== workspaceId) {
+      return new Response(JSON.stringify({ error: "Conversation belongs to a different scope." }), { status: 409 });
+    }
+    await supabase.from("conversations").update({ updated_at: new Date().toISOString() }).eq("id", convId);
+  } else {
     const { data: conv, error } = await supabase
       .from("conversations")
-      .insert({ owner_id: user.id, title: message.slice(0, 60), scope_document_ids: documentIds })
+      .insert({ owner_id: user.id, title: message.slice(0, 60), scope_document_ids: documentIds, workspace_id: workspaceId })
       .select("id")
       .single();
     if (error || !conv) {

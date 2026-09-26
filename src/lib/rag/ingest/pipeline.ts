@@ -1,7 +1,9 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getObjectBytes } from "@/lib/storage";
 import { uploadAndWaitActive } from "@/lib/gemini/files";
-import { classifyAndExtract, extractPlainText, type ClassifyExtractResult } from "./classify_extract";
+import { classifyAndExtract, classifyExtractedText, extractPlainText, type ClassifyExtractResult } from "./classify_extract";
+import { extractCsv, extractDocx, extractPptx, extractXlsx } from "./office";
+import { resolveFormat } from "./formats";
 import { contextualizeDocument, templatedContext, assembleContextHeader, type DocContext } from "./contextualize";
 import { chunkDocument } from "./chunk";
 import { embedDocuments } from "@/lib/gemini/embed";
@@ -82,13 +84,39 @@ async function runReal(
   await setStage(db, documentId, "classifying", 10);
   const bytes = await getObjectBytes(storageKey);
 
+  const format = resolveFormat(filename, mimeType)?.format;
   let extracted: ClassifyExtractResult;
-  if (mimeType === "text/plain" || mimeType === "text/markdown" || mimeType === "text/csv") {
-    extracted = extractPlainText(bytes, filename);
-  } else {
-    const { uri } = await uploadAndWaitActive(bytes, mimeType, filename);
-    extracted = await classifyAndExtract(uri, mimeType, filename);
+  switch (format) {
+    case "xlsx":
+      extracted = await classifyExtractedText(await extractXlsx(bytes), filename, "spreadsheet", {
+        docKind: "table_dataset",
+        reason: "Excel workbook: each sheet read directly as structured tables.",
+      });
+      break;
+    case "csv":
+      extracted = await classifyExtractedText(extractCsv(bytes, filename), filename, "spreadsheet", {
+        docKind: "table_dataset",
+        reason: "Delimited data file: parsed directly into row-group tables.",
+      });
+      break;
+    case "pptx":
+      extracted = await classifyExtractedText(await extractPptx(bytes), filename, "presentation", {
+        docKind: "lecture_slides",
+        reason: "PowerPoint deck: one page per slide, including speaker notes.",
+      });
+      break;
+    case "docx":
+      extracted = await classifyExtractedText(await extractDocx(bytes), filename, "office_doc");
+      break;
+    case "text":
+      extracted = await classifyExtractedText(extractPlainText(bytes), filename, "plain_text");
+      break;
+    default: {
+      const { uri } = await uploadAndWaitActive(bytes, mimeType, filename);
+      extracted = await classifyAndExtract(uri, mimeType, filename);
+    }
   }
+  if (extracted.pages.length === 0) throw new Error("No extractable content found in this file.");
   await logEvent(db, documentId, ownerId, "classifying", "ok", `${extracted.docKind} / ${extracted.pipeline}`);
 
   await db

@@ -1,6 +1,6 @@
 import { Type, createUserContent, createPartFromUri, type Schema } from "@google/genai";
 import { generateJson } from "@/lib/gemini/json";
-import { GEMINI_PARSE_MODEL } from "@/lib/gemini/models";
+import { GEMINI_PARSE_MODEL, GEMINI_FAST_MODEL } from "@/lib/gemini/models";
 import type { DocKind, DocPipeline } from "@/types/rag";
 import type { ExtractedPage } from "./chunk";
 
@@ -156,19 +156,74 @@ export async function classifyAndExtract(
   };
 }
 
-/** Plain text / markdown / csv: read directly, no Gemini call, no parsing at all. */
-export function extractPlainText(bytes: Uint8Array, filename: string): ClassifyExtractResult {
-  const text = Buffer.from(bytes).toString("utf-8");
-  return {
-    docKind: "plain_text",
-    textLayer: "born_digital",
-    pipeline: "plain_text",
-    confidence: 1,
-    reason: "Plain text file read directly, no classification needed.",
-    language: null,
-    title: filename,
-    pageCount: 1,
-    pages: [{ pageNo: 1, markdown: text }],
-    pageMeta: [{ pageNo: 1, hasTables: false, hasFigures: false, isNoisy: false, ocrConfidence: 1 }],
+export function extractPlainText(bytes: Uint8Array): ExtractedPage[] {
+  return [{ pageNo: 1, markdown: Buffer.from(bytes).toString("utf-8").replace(/^﻿/, "") }];
+}
+
+const TEXT_CLASSIFY_SCHEMA: Schema = {
+  type: Type.OBJECT,
+  required: ["doc_kind", "confidence", "reason"],
+  properties: {
+    doc_kind: { type: Type.STRING, enum: DOC_KINDS, format: "enum" },
+    confidence: { type: Type.NUMBER, minimum: 0, maximum: 1 },
+    reason: { type: Type.STRING, description: "One sentence: why this classification." },
+    language: { type: Type.STRING, nullable: true },
+    title: { type: Type.STRING, nullable: true, description: "The document's own title, not the filename." },
+  },
+};
+
+const CLASSIFY_SAMPLE_CHARS = 6000;
+
+/**
+ * Builds the result for formats whose text was extracted deterministically
+ * (Office, CSV, plain text). Classification is still automatic: one cheap
+ * call over a sample, unless the caller already knows the kind (spreadsheets
+ * are table_dataset, decks are lecture_slides -- the latter also selects the
+ * one-chunk-per-slide policy).
+ */
+export async function classifyExtractedText(
+  pages: ExtractedPage[],
+  filename: string,
+  pipeline: DocPipeline,
+  fixed?: { docKind: DocKind; reason: string }
+): Promise<ClassifyExtractResult> {
+  const base = {
+    textLayer: "born_digital" as const,
+    pipeline,
+    pageCount: pages.length,
+    pages,
+    pageMeta: pages.map((p) => ({
+      pageNo: p.pageNo,
+      hasTables: /^\|.*\|$/m.test(p.markdown),
+      hasFigures: false,
+      isNoisy: false,
+      ocrConfidence: 1,
+    })),
   };
+
+  if (fixed) {
+    return { ...base, docKind: fixed.docKind, confidence: 1, reason: fixed.reason, language: null, title: filename };
+  }
+
+  const sample = pages.map((p) => p.markdown).join("\n\n").slice(0, CLASSIFY_SAMPLE_CHARS);
+  try {
+    const raw = await generateJson<{ doc_kind: string; confidence: number; reason: string; language?: string | null; title?: string | null }>(
+      GEMINI_FAST_MODEL,
+      createUserContent([
+        `Classify this document into exactly one doc_kind from the enum. Filename: ${filename}\n\n---\n${sample}`,
+      ]),
+      TEXT_CLASSIFY_SCHEMA
+    );
+    return {
+      ...base,
+      docKind: (DOC_KINDS.includes(raw.doc_kind as DocKind) ? raw.doc_kind : "generic_text") as DocKind,
+      confidence: Math.min(1, Math.max(0, raw.confidence ?? 0)),
+      reason: raw.reason || "",
+      language: raw.language ?? null,
+      title: raw.title || filename,
+    };
+  } catch (err) {
+    console.warn(`[classify] text classification failed for ${filename}, defaulting:`, err);
+    return { ...base, docKind: "generic_text", confidence: 0, reason: "Classifier unavailable; defaulted.", language: null, title: filename };
+  }
 }

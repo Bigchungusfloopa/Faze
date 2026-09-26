@@ -207,3 +207,15 @@
   * { animation: none !important; transition: none !important; }
   .anim { opacity: 1 !important; transform: none !important; filter: none !important; }
 }
+
+/* Rendered assistant answers (markdown) */
+.prose-faze { display: flex; flex-direction: column; gap: 0.6rem; }
+.prose-faze h1, .prose-faze h2, .prose-faze h3 { font-weight: 600; color: #fff; }
+.prose-faze ul { list-style: disc; padding-left: 1.2rem; }
+.prose-faze ol { list-style: decimal; padding-left: 1.2rem; }
+.prose-faze code { background: rgba(255,255,255,0.08); padding: 0.1rem 0.3rem; border-radius: 4px; font-size: 0.85em; }
+.prose-faze pre { background: rgba(0,0,0,0.35); padding: 0.75rem; border-radius: 10px; overflow-x: auto; }
+.prose-faze table { border-collapse: collapse; font-size: 0.8rem; display: block; overflow-x: auto; }
+.prose-faze th, .prose-faze td { border: 1px solid rgba(255,255,255,0.12); padding: 0.3rem 0.55rem; text-align: left; }
+.prose-faze th { background: rgba(255,255,255,0.06); }
+.prose-faze strong { color: #fff; }

@@ -1,13 +1,10 @@
-"use client"
-
-import { useCallback, useRef } from "react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { UploadCloud } from "lucide-react"
-import { useDragAndDrop } from "@/hooks/useDragAndDrop"
 import { createClient } from "@/lib/supabase/client"
 import { STORAGE_BUCKET } from "@/lib/storage-constants"
-import { cn } from "@/lib/utils"
+import { ACCEPTED_EXTENSIONS } from "@/lib/rag/ingest/formats"
+
+export const UPLOAD_ACCEPT = ACCEPTED_EXTENSIONS.join(",")
 
 async function sha256Hex(file: File): Promise<string> {
   const buf = await file.arrayBuffer()
@@ -57,11 +54,9 @@ async function uploadOne(file: File, workspaceId?: string) {
   return { documentId, duplicate: false }
 }
 
-export function UploadDropzone({ workspaceId }: { workspaceId?: string }) {
+export function useUploadDocuments(workspaceId?: string) {
   const queryClient = useQueryClient()
-  const inputRef = useRef<HTMLInputElement>(null)
-
-  const upload = useMutation({
+  return useMutation({
     mutationFn: async (files: File[]) => {
       const results = await Promise.allSettled(files.map((f) => uploadOne(f, workspaceId)))
       return { results }
@@ -79,41 +74,4 @@ export function UploadDropzone({ workspaceId }: { workspaceId?: string }) {
     },
     onError: (err: Error) => toast.error(err.message || "Upload failed."),
   })
-
-  const onDrop = useCallback((files: File[]) => {
-    if (files.length > 0) upload.mutate(files)
-  }, [upload])
-
-  const { isDragging } = useDragAndDrop(onDrop)
-
-  return (
-    <div
-      className={cn(
-        "border border-dashed border-white/20 bg-white/[0.03] rounded-2xl p-8 flex flex-col items-center gap-3 text-center cursor-pointer transition-colors",
-        isDragging ? "bg-primary/10 border-solid" : "bg-card hover:bg-muted/40"
-      )}
-      onClick={() => inputRef.current?.click()}
-    >
-      <UploadCloud className="w-8 h-8 text-foreground/70" />
-      <div>
-        <p className="font-bold text-sm">Drop documents here, or click to browse</p>
-        <p className="text-xs text-muted-foreground mt-1">
-          PDF, PNG, JPEG, WEBP, TXT, MD, CSV — up to 45MB each
-        </p>
-      </div>
-      {upload.isPending && <p className="text-xs font-semibold">Uploading…</p>}
-      <input
-        ref={inputRef}
-        type="file"
-        multiple
-        className="hidden"
-        accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.md,.csv,application/pdf,image/png,image/jpeg,image/webp,text/plain,text/markdown,text/csv"
-        onChange={(e) => {
-          const files = Array.from(e.target.files ?? [])
-          if (files.length > 0) upload.mutate(files)
-          e.target.value = ""
-        }}
-      />
-    </div>
-  )
 }

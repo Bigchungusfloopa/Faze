@@ -23,8 +23,8 @@ export function CitationRail({
         <div
           key={s.marker}
           id={`source-${s.marker}`}
-          className={`border border-white/10 rounded-lg bg-card p-2.5 text-xs transition-colors ${
-            activeMarker === s.marker ? "bg-primary/10" : ""
+          className={`rounded-xl border p-2.5 text-xs transition-colors ${
+            activeMarker === s.marker ? "border-white/40 bg-white/10" : "border-white/10 bg-white/[0.04]"
           }`}
         >
           <div className="flex items-start gap-1.5">
@@ -37,7 +37,7 @@ export function CitationRail({
                 <span className="truncate">{s.documentTitle}</span>
               </div>
               <p className="text-muted-foreground mt-0.5">
-                {s.pageFrom === s.pageTo ? `p. ${s.pageFrom}` : `pp. ${s.pageFrom}-${s.pageTo}`}
+                {s.pageFrom == null ? "" : s.pageFrom === s.pageTo ? `p. ${s.pageFrom}` : `pp. ${s.pageFrom}–${s.pageTo}`}
                 {s.sectionPath.length > 0 ? ` · ${s.sectionPath.join(" > ")}` : ""}
               </p>
               <p className="mt-1 italic text-foreground/80 line-clamp-3">&ldquo;{s.snippet}&rdquo;</p>

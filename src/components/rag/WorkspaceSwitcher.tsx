@@ -74,10 +74,10 @@ export function WorkspaceSwitcher({
   return (
     <>
       <Select value={scope.workspaceId ?? PERSONAL_VALUE} onValueChange={handleSelect}>
-        <SelectTrigger className="w-[220px] border border-white/10 rounded-[0.5rem] font-bold text-sm bg-card">
+        <SelectTrigger className="w-full rounded-xl border border-white/12 bg-white/[0.05] text-sm font-medium">
           <SelectValue />
         </SelectTrigger>
-        <SelectContent className="border border-white/10 rounded-[0.75rem]">
+        <SelectContent className="rounded-xl border border-white/10 bg-[#141416]">
           <SelectItem value={PERSONAL_VALUE} className="font-medium">Personal</SelectItem>
           {workspaces.map((w) => (
             <SelectItem key={w.id} value={w.id} className="font-medium">
@@ -86,19 +86,19 @@ export function WorkspaceSwitcher({
               </span>
             </SelectItem>
           ))}
-          <SelectItem value="__create__" className="font-bold text-primary">
+          <SelectItem value="__create__" className="font-bold text-white">
             <span className="flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Create workspace</span>
           </SelectItem>
-          <SelectItem value="__join__" className="font-bold text-primary">
+          <SelectItem value="__join__" className="font-bold text-white">
             <span className="flex items-center gap-1.5"><LogIn className="w-3.5 h-3.5" /> Join workspace</span>
           </SelectItem>
         </SelectContent>
       </Select>
 
       <Dialog open={dialog !== null} onOpenChange={(open) => !open && closeDialog()}>
-        <DialogContent className="border border-white/10 rounded-[1.5rem]">
+        <DialogContent className="rounded-3xl border border-white/10 bg-[#111113]/95 backdrop-blur-xl">
           <DialogHeader>
-            <DialogTitle className="font-heading font-extrabold text-xl">
+            <DialogTitle className="font-heading font-semibold text-xl">
               {dialog === "create" ? "Create a workspace" : "Join a workspace"}
             </DialogTitle>
           </DialogHeader>

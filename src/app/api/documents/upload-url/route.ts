@@ -2,17 +2,9 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getUploadToken } from "@/lib/storage";
 import { STORAGE_BUCKET } from "@/lib/storage-constants";
+import { resolveFormat } from "@/lib/rag/ingest/formats";
 
 const MAX_FILE_SIZE = 45 * 1024 * 1024; // 45 MB — under Gemini's native 50MB PDF cap
-const ALLOWED_MIME = new Set([
-  "application/pdf",
-  "image/png",
-  "image/jpeg",
-  "image/webp",
-  "text/plain",
-  "text/markdown",
-  "text/csv",
-]);
 
 /**
  * Step 1 of a direct-to-bucket upload: the client asks for a signed upload
@@ -29,23 +21,25 @@ export async function POST(request: Request) {
 
   const body = await request.json().catch(() => null);
   const filename = (body?.filename as string | undefined)?.trim();
-  const mimeType = body?.mimeType as string | undefined;
+  const rawMime = body?.mimeType as string | undefined;
   const sizeBytes = Number(body?.sizeBytes);
   const checksumSha256 = body?.checksumSha256 as string | undefined;
   const workspaceId = (body?.workspaceId as string | undefined) || null;
 
-  if (!filename || !mimeType || !checksumSha256 || !Number.isFinite(sizeBytes) || sizeBytes <= 0) {
+  if (!filename || !checksumSha256 || !Number.isFinite(sizeBytes) || sizeBytes <= 0) {
     return NextResponse.json(
       { error: "filename, mimeType, sizeBytes and checksumSha256 are required." },
       { status: 400 }
     );
   }
-  if (!ALLOWED_MIME.has(mimeType)) {
+  const resolved = resolveFormat(filename, rawMime);
+  if (!resolved) {
     return NextResponse.json(
-      { error: `Unsupported file type: ${mimeType}. PDF, PNG, JPEG, WEBP, TXT, MD and CSV only.` },
+      { error: `Unsupported file type for ${filename}. Supported: PDF, images, DOCX, PPTX, XLSX, CSV/TSV, TXT/MD/JSON.` },
       { status: 400 }
     );
   }
+  const mimeType = resolved.mime;
   if (sizeBytes > MAX_FILE_SIZE) {
     return NextResponse.json({ error: "File exceeds the 45MB limit." }, { status: 400 });
   }

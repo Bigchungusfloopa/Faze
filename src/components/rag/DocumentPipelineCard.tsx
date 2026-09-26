@@ -37,6 +37,9 @@ const PIPELINE_LABELS: Record<string, string> = {
   vision_ocr: "vision OCR",
   image_single: "image",
   plain_text: "plain text",
+  spreadsheet: "spreadsheet",
+  office_doc: "Word doc",
+  presentation: "slides",
 }
 
 function formatBytes(bytes: number) {
@@ -71,12 +74,12 @@ export function DocumentPipelineCard({ doc }: { doc: DocumentRow }) {
   const isReady = doc.status === "ready"
 
   return (
-    <div className="border border-white/10 rounded-xl bg-card p-4 flex flex-col gap-3">
+    <div className="rounded-xl border border-white/10 bg-white/[0.04] p-3 flex flex-col gap-2">
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-start gap-2 min-w-0">
-          <FileText className="w-5 h-5 shrink-0 mt-0.5 text-foreground/70" />
+          <FileText className="w-4 h-4 shrink-0 mt-0.5 text-white/60" />
           <div className="min-w-0">
-            <p className="font-bold text-sm truncate" title={doc.title}>{doc.title}</p>
+            <p className="font-medium text-[13px] truncate" title={doc.title}>{doc.title}</p>
             <p className="text-xs text-muted-foreground">{formatBytes(doc.size_bytes)}</p>
           </div>
         </div>
@@ -84,8 +87,8 @@ export function DocumentPipelineCard({ doc }: { doc: DocumentRow }) {
           {isFailed && (
             <Button
               size="icon"
-              variant="outline"
-              className="h-7 w-7"
+              variant="ghost"
+              className="h-6 w-6"
               title="Retry"
               disabled={reprocess.isPending}
               onClick={() => reprocess.mutate()}
@@ -95,8 +98,8 @@ export function DocumentPipelineCard({ doc }: { doc: DocumentRow }) {
           )}
           <Button
             size="icon"
-            variant="outline"
-            className="h-7 w-7"
+            variant="ghost"
+            className="h-6 w-6"
             title="Delete"
             disabled={remove.isPending}
             onClick={() => remove.mutate()}

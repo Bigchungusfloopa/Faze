@@ -26,7 +26,14 @@ export type DocKind =
   | "generic_text"
   | "unknown";
 
-export type DocPipeline = "native_text" | "vision_ocr" | "image_single" | "plain_text";
+export type DocPipeline =
+  | "native_text"
+  | "vision_ocr"
+  | "image_single"
+  | "plain_text"
+  | "spreadsheet"
+  | "office_doc"
+  | "presentation";
 
 export type MessageRole = "user" | "assistant";
 
