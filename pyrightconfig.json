@@ -1,0 +1,8 @@
+{
+  "venvPath": ".",
+  "venv": ".venv",
+  "extraPaths": [
+    "doc_agent",
+    "doc_agent/.venv/lib/python3.14/site-packages"
+  ]
+}

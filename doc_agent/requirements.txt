@@ -1,0 +1,14 @@
+pymupdf>=1.24
+pdfplumber>=0.11
+chromadb>=0.5
+pillow>=10.0
+reportlab>=4.0
+pytest>=8.0
+python-dotenv>=1.0
+openpyxl>=3.1
+python-docx>=1.1
+python-pptx>=1.0
+pandas>=2.0
+google-generativeai>=0.8   # only needed for real Gemini calls (GeminiClient)
+types-openpyxl>=3.1
+types-reportlab>=4.0
