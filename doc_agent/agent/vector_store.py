@@ -58,6 +58,14 @@ class VectorStore:
             })
         return results
 
+    def delete_by_filename(self, filename: str):
+        if self.collection.count() == 0:
+            return
+        try:
+            self.collection.delete(where={"filename": filename})
+        except Exception:
+            pass
+
     def reset(self):
         self.client.delete_collection(self.collection.name)
         self.collection = self.client.get_or_create_collection(self.collection.name)

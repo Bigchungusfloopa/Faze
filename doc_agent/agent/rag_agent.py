@@ -169,6 +169,19 @@ class DocumentIntelligenceAgent:
     def _vision_fn(self, image_bytes: bytes, prompt: str) -> str:
         return self.llm.vision_transcribe(image_bytes, prompt)
 
+    def delete_document(self, filename: str) -> bool:
+        self.store.delete_by_filename(filename)
+        if self.xlsx_engine.current_workbook and (
+            Path(self.xlsx_engine.current_workbook.file_path).name == filename
+        ):
+            self.xlsx_engine.current_workbook = None
+            self.xlsx_engine.current_dataframes = {}
+        if self.ocr_agent.current_document and (
+            Path(self.ocr_agent.current_document.file_path).name == filename
+        ):
+            self.ocr_agent.current_document = None
+        return True
+
     # ------------------------------------------------------------- query
     def query(self, question: str, session_id: str = "default") -> AgentResponse:
         history = self.sessions.setdefault(session_id, [])

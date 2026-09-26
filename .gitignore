@@ -9,4 +9,6 @@ __pycache__/
 .pytest_cache/
 .DS_Store
 chroma_data/
+doc_agent/uploads/
+frontend/dist/
 *.log
